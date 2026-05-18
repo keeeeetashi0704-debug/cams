@@ -1283,9 +1283,49 @@ const QUESTION_BANK = [
 },
 
 ];
+// ═══════════════════════════════════════
+// 大項目→小項目 マッピング (スタディガイド4章構成)
+// ═══════════════════════════════════════
+const CHAPTERS = {
+  'CH1: MLの手口とリスク': [
+    'MLの定義と段階','経済的・社会的影響','意図的な無関心','個人の説明責任',
+    'MLの手口・複合','MLの経済的影響・複合',
+    'コルレス・バンキング','コルレス・バンキング・PTA','ペイヤブル・スルー口座',
+    '集中口座','プライベート・バンキング','PIC・シェルカンパニー',
+    '電子的資金移動','リモートデポジットキャプチャー',
+    'PEP','PEP・EDD','ストラクチャリング',
+    'NBFI・MSB','プリペイドカード','クレジットカード','決済代行業者',
+    '保険・証券','証券・ブローカー',
+    'カジノ・NFBP','不動産','美術品・高額品','旅行代理店・車両',
+    'ゲートキーパー','TCSP',
+    'TBML','TBML・野生生物','BMPE','ハワラ',
+    '仮想通貨','シェルカンパニー','LLC・IBC・信託',
+    'テロ資金供与'
+  ],
+  'CH2: AML/CFTの国際基準': [
+    'FATF','FATF40の勧告','FATF・セーフハーバー','FATF・非協力国',
+    'EU指令','米国愛国者法','OFAC','AMLA2020','経済制裁',
+    'バーゼル委員会','バーゼル委員会・KYC','バーゼル委員会・3防衛線',
+    'ウォルフスバーグ','エグモントグループ','FSRB','FSRB・APG',
+    '国際協力'
+  ],
+  'CH3: AML/CFTコンプライアンス': [
+    'AML/CFTプログラム','リスク評価','コンプライアンス担当者','コンプライアンス文化',
+    'CDD','CDD・口座開設','CDD・真の受益者','EDD','統合CDD','KYE',
+    '制裁スクリーニング','自動AMLシステム',
+    'STR・モニタリング','STR・セーフハーバー','取引モニタリング',
+    'レッドフラグ'
+  ],
+  'CH4: 調査と国際協力': [
+    '調査開始要因','調査・法執行機関対応','召喚令状・捜索令状',
+    '法執行機関対応','起訴判断','金融機関が調査対象の場合',
+    'FIU','FIU・国際協力','FIU・情報交換',
+    'MLAT','シナリオ総合'
+  ]
+};
 
 // ═══════════════════════════════════════
-// STORAGE — localStorage で完全永続化
+// STORAGE
 // ═══════════════════════════════════════
 const STORE_KEY = 'cams_v1';
 
@@ -1294,17 +1334,8 @@ function loadStore() {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) return JSON.parse(raw);
   } catch(e) {}
-  return {
-    correct: 0, incorrect: 0, byTopic: {},
-    // answered: {qId -> {correct:bool, count:int, lastAt:ts}}
-    answered: {},
-    // exam history: [{date, score, total, pct}]
-    examHistory: [],
-    // practice streak
-    streak: 0, lastDate: null
-  };
+  return { correct:0, incorrect:0, byTopic:{}, answered:{}, examHistory:[], streak:0, lastDate:null };
 }
-
 function saveStore(st) {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch(e) {}
 }
@@ -1316,32 +1347,32 @@ function recordAnswer(qId, topic, ok) {
   ST.incorrect += ok ? 0 : 1;
   if (!ST.byTopic[topic]) ST.byTopic[topic] = {correct:0, incorrect:0};
   ST.byTopic[topic][ok ? 'correct' : 'incorrect']++;
-  if (!ST.answered[qId]) ST.answered[qId] = {correct:0, incorrect:0, count:0};
+  if (!ST.answered[qId]) ST.answered[qId] = {correct:0, incorrect:0, count:0, lastAt:0};
   ST.answered[qId].correct += ok ? 1 : 0;
   ST.answered[qId].incorrect += ok ? 0 : 1;
   ST.answered[qId].count++;
   ST.answered[qId].lastAt = Date.now();
-  // streak
+  if (!ok) ST.answered[qId].lastWrong = Date.now();
   const today = new Date().toDateString();
-  if (ST.lastDate !== today) { ST.streak++; ST.lastDate = today; }
+  if (ST.lastDate !== today) { ST.streak = (ST.streak||0)+1; ST.lastDate = today; }
   saveStore(ST);
   updateHeader();
 }
 
 function recordExam(score, total) {
-  const pct = Math.round(score/total*100);
+  const p = Math.round(score/total*100);
   if (!ST.examHistory) ST.examHistory = [];
-  ST.examHistory.unshift({date: new Date().toLocaleString('ja-JP'), score, total, pct});
+  ST.examHistory.unshift({date: new Date().toLocaleString('ja-JP'), score, total, pct:p});
   if (ST.examHistory.length > 20) ST.examHistory = ST.examHistory.slice(0,20);
   saveStore(ST);
 }
 
 function updateHeader() {
   const tot = ST.correct + ST.incorrect;
-  const pct = tot === 0 ? 0 : Math.round(ST.correct/tot*100);
+  const p = tot === 0 ? 0 : Math.round(ST.correct/tot*100);
   document.getElementById('hdr-correct').textContent = ST.correct;
   document.getElementById('hdr-wrong').textContent = ST.incorrect;
-  document.getElementById('hdr-pct').textContent = pct + '%';
+  document.getElementById('hdr-pct').textContent = p + '%';
 }
 
 // ═══════════════════════════════════════
@@ -1360,8 +1391,7 @@ function isCorrect(q, ans) {
 
 function pct(a, b) { return a+b === 0 ? 0 : Math.round(a/(a+b)*100); }
 
-const TOPICS = [...new Set(QUESTION_BANK.map(q => q.topic))].sort();
-const DIFFS  = ['基本', '応用', '本番レベル'];
+const DIFFS = ['基本','応用','本番レベル'];
 
 function tag(txt, cls) { return `<span class="tag ${cls}">${txt}</span>`; }
 
@@ -1386,12 +1416,17 @@ function toast(msg) {
   setTimeout(() => el.classList.remove('show'), 2000);
 }
 
-// ═══════════════════════════════════════
-// RENDER ENGINE
-// ═══════════════════════════════════════
 const $ = id => document.getElementById(id);
 const content = () => $('content');
 function html(h) { content().innerHTML = h; content().scrollTop = 0; }
+
+// チャプター名からトピックリストを逆引き
+function chapterOf(topic) {
+  for (const [ch, topics] of Object.entries(CHAPTERS)) {
+    if (topics.includes(topic)) return ch;
+  }
+  return 'CH1: MLの手口とリスク';
+}
 
 // ═══════════════════════════════════════
 // TAB ROUTER
@@ -1407,64 +1442,110 @@ function showTab(tab) {
   });
   if (tab === 'practice') renderPractice();
   else if (tab === 'exam')  renderExamSetup();
-  else if (tab === 'topics') renderTopics();
+  else if (tab === 'topics') renderTopicsHome();
   else if (tab === 'stats')  renderStats();
 }
 
 // ═══════════════════════════════════════
-// PRACTICE
+// PRACTICE  (①項目選択 ②ランダム ③復習)
 // ═══════════════════════════════════════
 let PR = {
-  pool: [], idx: 0, filterTopic: '全て', filterDiff: '全て',
-  sel: [], done: false
+  pool:[], idx:0, sel:[], done:false,
+  mode:'select',      // 'select' | 'random' | 'review'
+  // select mode
+  selChapter:'',      // '' = 未選択
+  selTopics:[],       // 選択中のトピックリスト
+  selDiff:'全て',
+  // random sub-mode
+  randMode:'weak',    // 'weak' | 'random' | 'fresh'
+  // review sub-mode
+  revMode:'wrong',    // 'wrong' | 'oldest'
 };
 
+/* ---- プール構築 ---- */
 function buildPool() {
   let q = QUESTION_BANK;
-  if (PR.filterTopic !== '全て') q = q.filter(x => x.topic === PR.filterTopic);
-  if (PR.filterDiff  !== '全て') q = q.filter(x => x.difficulty === PR.filterDiff);
-  // weak-first: sort by wrong rate desc, then shuffle rest
-  const answered = q.filter(x => ST.answered[x.id]);
-  const fresh = q.filter(x => !ST.answered[x.id]);
-  const weak = answered.filter(x => {
-    const a = ST.answered[x.id];
-    return pct(a.correct, a.incorrect) < 60;
-  }).sort((a,b) => {
-    const pa = pct(ST.answered[a.id].correct, ST.answered[a.id].incorrect);
-    const pb = pct(ST.answered[b.id].correct, ST.answered[b.id].incorrect);
-    return pa - pb;
-  });
-  const ok = answered.filter(x => pct(ST.answered[x.id].correct, ST.answered[x.id].incorrect) >= 60);
-  return [...shuffle(fresh), ...weak, ...shuffle(ok)];
+
+  if (PR.mode === 'select') {
+    if (PR.selTopics.length > 0) q = q.filter(x => PR.selTopics.includes(x.topic));
+    if (PR.selDiff !== '全て') q = q.filter(x => x.difficulty === PR.selDiff);
+    // weak-first
+    const fresh  = q.filter(x => !ST.answered[x.id]);
+    const weak   = q.filter(x => ST.answered[x.id] && pct(ST.answered[x.id].correct, ST.answered[x.id].incorrect) < 60)
+                    .sort((a,b) => pct(ST.answered[a.id].correct,ST.answered[a.id].incorrect)
+                                 - pct(ST.answered[b.id].correct,ST.answered[b.id].incorrect));
+    const ok     = q.filter(x => ST.answered[x.id] && pct(ST.answered[x.id].correct, ST.answered[x.id].incorrect) >= 60);
+    return [...shuffle(fresh), ...weak, ...shuffle(ok)];
+  }
+
+  if (PR.mode === 'random') {
+    if (PR.randMode === 'weak') {
+      const answered = q.filter(x => ST.answered[x.id]);
+      const fresh    = q.filter(x => !ST.answered[x.id]);
+      const weak     = answered.filter(x => pct(ST.answered[x.id].correct, ST.answered[x.id].incorrect) < 60)
+                        .sort((a,b) => pct(ST.answered[a.id].correct,ST.answered[a.id].incorrect)
+                                     - pct(ST.answered[b.id].correct,ST.answered[b.id].incorrect));
+      const ok       = answered.filter(x => pct(ST.answered[x.id].correct, ST.answered[x.id].incorrect) >= 60);
+      return [...weak, ...shuffle(fresh), ...shuffle(ok)];
+    }
+    if (PR.randMode === 'random') return shuffle(q);
+    if (PR.randMode === 'fresh') {
+      const fresh = q.filter(x => !ST.answered[x.id]);
+      const rest  = q.filter(x =>  ST.answered[x.id]);
+      return [...shuffle(fresh), ...shuffle(rest)];
+    }
+  }
+
+  if (PR.mode === 'review') {
+    const answered = q.filter(x => ST.answered[x.id]);
+    if (PR.revMode === 'wrong') {
+      // 間違えた問題（lastWrong あり）を正解率低い順
+      const wrong = answered.filter(x => ST.answered[x.id].lastWrong)
+                    .sort((a,b) => pct(ST.answered[a.id].correct,ST.answered[a.id].incorrect)
+                                 - pct(ST.answered[b.id].correct,ST.answered[b.id].incorrect));
+      return wrong.length ? wrong : [];
+    }
+    if (PR.revMode === 'oldest') {
+      // 回答日が古い順
+      return [...answered].sort((a,b) => (ST.answered[a.id].lastAt||0) - (ST.answered[b.id].lastAt||0));
+    }
+  }
+  return shuffle(q);
 }
 
+/* ---- メイン描画 ---- */
 function renderPractice() {
-  if (!PR.pool.length || PR.filterTopic !== (PR._lastTopic||'全て') || PR.filterDiff !== (PR._lastDiff||'全て')) {
-    PR._lastTopic = PR.filterTopic; PR._lastDiff = PR.filterDiff;
+  // モード選択画面
+  if (!PR.pool.length || currentPracticeNeedsRebuild()) {
+    PR._lastState = JSON.stringify({mode:PR.mode,selTopics:PR.selTopics,selDiff:PR.selDiff,randMode:PR.randMode,revMode:PR.revMode});
     PR.pool = buildPool(); PR.idx = 0; PR.sel = []; PR.done = false;
   }
-  if (!PR.pool.length) { html('<div style="text-align:center;padding:48px;color:#64748B">条件に合う問題がありません</div>'); return; }
+  if (!PR.pool.length) {
+    html(`<div style="text-align:center;padding:40px;color:#64748B">
+      <div style="font-size:32px;margin-bottom:12px">📭</div>
+      <div style="font-size:14px;margin-bottom:16px">対象の問題がありません</div>
+      <button class="btn-primary" onclick="prShowModeMenu()">モードを選択</button>
+    </div>`);
+    return;
+  }
   const q = PR.pool[PR.idx];
   const isMulti = !!q.multi;
   const cs = Array.isArray(q.answer) ? q.answer : [q.answer];
   const ok = PR.done && isCorrect(q, q.multi ? PR.sel : PR.sel[0]);
   const qInfo = ST.answered[q.id];
-  const qPct = qInfo ? pct(qInfo.correct, qInfo.incorrect) : null;
+  const qPct  = qInfo ? pct(qInfo.correct, qInfo.incorrect) : null;
 
-  let topicFilters = ['全て', ...TOPICS].map(t =>
-    `<button class="btn-sec ${PR.filterTopic===t?'active':''}" onclick="setPT('${t.replace(/'/g,"\\'")}')">` +
-    (t==='全て'?'全て':t.length>8?t.slice(0,8)+'…':t) + `</button>`
-  ).join('');
-  let diffFilters = ['全て',...DIFFS].map(d =>
-    `<button class="btn-sec ${PR.filterDiff===d?'active':''}" onclick="setPD('${d}')">${d}</button>`
-  ).join('');
-
-  let optsHtml = q.options.map((opt, i) => {
+  const optsHtml = q.options.map((opt, i) => {
     const cls = optClass(i, PR.done, q.answer, PR.sel);
     return `<button class="${cls}" onclick="prOpt(${i})">${opt}</button>`;
   }).join('');
 
-  let explHtml = PR.done ? `
+  const modeLabel = PR.mode==='select'
+    ? (PR.selTopics.length ? PR.selTopics.slice(0,2).join('・')+(PR.selTopics.length>2?'…':'') : '全トピック')
+    : PR.mode==='random' ? {'weak':'苦手優先','random':'完全ランダム','fresh':'未実施優先'}[PR.randMode]
+    : {'wrong':'間違い問題','oldest':'古い順'}[PR.revMode];
+
+  const explHtml = PR.done ? `
     <div class="card ${ok?'accent':'danger'}" style="margin-top:10px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
         <span style="font-size:16px">${ok?'✅':'❌'}</span>
@@ -1477,23 +1558,17 @@ function renderPractice() {
   ` : `<button class="btn-primary" style="margin-top:12px;opacity:${PR.sel.length?1:.5}" onclick="prSubmit()" ${PR.sel.length?'':' disabled'}>回答する</button>`;
 
   html(`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <h2>🎯 一問一答</h2>
-      <button class="btn-sec" onclick="prNext()" style="padding:6px 12px">スキップ →</button>
-    </div>
-
-    <div style="margin-bottom:10px">
-      <p style="font-size:10px;color:#64748B;font-weight:600;margin-bottom:4px">トピック</p>
-      <div class="filter-scroll">${topicFilters}</div>
-    </div>
-    <div style="margin-bottom:12px">
-      <p style="font-size:10px;color:#64748B;font-weight:600;margin-bottom:4px">難易度</p>
-      <div class="filter-scroll">${diffFilters}</div>
+      <button class="btn-sec" onclick="prShowModeMenu()" style="padding:5px 10px;font-size:11px">⚙ モード</button>
     </div>
 
     <div style="background:#0D1520;border:1px solid #162035;border-radius:10px;padding:8px 12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
-      <span style="font-size:11px;color:#64748B">${PR.idx+1}/${PR.pool.length}問 ${qInfo?`・正解率${qPct}%`:'・初回'}</span>
-      <span style="font-size:11px;color:#64748B">${PR.pool.filter(x=>ST.answered[x.id]).length}問回答済み</span>
+      <span style="font-size:11px;color:#64748B">${modeLabel} | ${PR.idx+1}/${PR.pool.length}問</span>
+      <div style="display:flex;gap:6px">
+        <span style="font-size:11px;color:#64748B">${qInfo?`正解率${qPct}%`:'初回'}</span>
+        <button class="btn-sec" onclick="prNext()" style="padding:3px 8px;font-size:10px">スキップ</button>
+      </div>
     </div>
 
     <div class="card">
@@ -1502,23 +1577,177 @@ function renderPractice() {
       </div>
       <p style="font-size:14px;line-height:1.8;font-weight:600">${q.question}</p>
     </div>
-
     <div>${optsHtml}</div>
     ${explHtml}
   `);
 }
 
-function setPT(t) { PR.filterTopic = t; PR.pool = buildPool(); PR.idx = 0; PR.sel = []; PR.done = false; renderPractice(); }
-function setPD(d) { PR.filterDiff = d; PR.pool = buildPool(); PR.idx = 0; PR.sel = []; PR.done = false; renderPractice(); }
+function currentPracticeNeedsRebuild() {
+  const cur = JSON.stringify({mode:PR.mode,selTopics:PR.selTopics,selDiff:PR.selDiff,randMode:PR.randMode,revMode:PR.revMode});
+  return cur !== (PR._lastState||'');
+}
+
+/* ---- モード選択メニュー ---- */
+function prShowModeMenu() {
+  html(`
+    <h2 style="margin-bottom:16px">⚙ 出題モードを選択</h2>
+
+    <div style="font-size:12px;font-weight:700;color:#64748B;margin-bottom:8px;letter-spacing:0.5px">① 項目選択モード</div>
+    <div class="card" style="margin-bottom:16px;cursor:pointer" onclick="prShowChapterSelect()">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:700;font-size:14px">📚 章・トピックを選ぶ</div>
+          <div style="font-size:11px;color:#64748B;margin-top:4px">大項目4章 → 小トピックを選択して出題</div>
+        </div>
+        <span style="color:#64748B">→</span>
+      </div>
+    </div>
+
+    <div style="font-size:12px;font-weight:700;color:#64748B;margin-bottom:8px;letter-spacing:0.5px">② ランダムモード</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+      ${[['weak','📉 正答率が悪い問題を中心に','苦手を集中特訓'],
+         ['random','🎲 完全ランダム','全問題からランダム出題'],
+         ['fresh','🆕 未実施の問題を中心に','まだ解いていない問題から']].map(([m,t,s])=>`
+        <div class="card" style="cursor:pointer;${PR.mode==='random'&&PR.randMode===m?'border-color:#00C9A7':''}" onclick="setRandMode('${m}')">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-weight:700;font-size:13px">${t}</div>
+              <div style="font-size:11px;color:#64748B;margin-top:2px">${s}</div>
+            </div>
+            ${PR.mode==='random'&&PR.randMode===m?'<span style="color:#00C9A7;font-size:16px">✓</span>':'<span style="color:#64748B">→</span>'}
+          </div>
+        </div>`).join('')}
+    </div>
+
+    <div style="font-size:12px;font-weight:700;color:#64748B;margin-bottom:8px;letter-spacing:0.5px">③ 復習モード</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+      ${[['wrong','❌ 間違えた問題を中心に','不正解だった問題を再出題'],
+         ['oldest','🕐 回答日が古い順に','最も古く解いた問題から']].map(([m,t,s])=>`
+        <div class="card" style="cursor:pointer;${PR.mode==='review'&&PR.revMode===m?'border-color:#F59E0B':''}" onclick="setRevMode('${m}')">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-weight:700;font-size:13px">${t}</div>
+              <div style="font-size:11px;color:#64748B;margin-top:2px">${s}</div>
+            </div>
+            ${PR.mode==='review'&&PR.revMode===m?'<span style="color:#F59E0B;font-size:16px">✓</span>':'<span style="color:#64748B">→</span>'}
+          </div>
+        </div>`).join('')}
+    </div>
+  `);
+}
+
+/* ---- 章・トピック選択 ---- */
+function prShowChapterSelect() {
+  const chBtns = Object.keys(CHAPTERS).map(ch => {
+    const total = QUESTION_BANK.filter(q => CHAPTERS[ch].includes(q.topic)).length;
+    const sel = PR.selChapter === ch;
+    return `<div class="card" style="cursor:pointer;${sel?'border-color:#00C9A7':''};margin-bottom:8px" onclick="prSelectChapter('${ch.replace(/'/g,"\\'")}')">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:700;font-size:13px">${ch}</div>
+          <div style="font-size:10px;color:#64748B;margin-top:2px">${total}問収録</div>
+        </div>
+        ${sel?'<span style="color:#00C9A7">✓</span>':'<span style="color:#64748B">→</span>'}
+      </div>
+    </div>`;
+  }).join('');
+
+  let topicSection = '';
+  if (PR.selChapter) {
+    const topics = CHAPTERS[PR.selChapter];
+    const diffBtns = ['全て',...DIFFS].map(d =>
+      `<button class="btn-sec ${PR.selDiff===d?'active':''}" onclick="prSetDiff('${d}')" style="flex-shrink:0">${d}</button>`
+    ).join('');
+    const topicBtns = topics.map(t => {
+      const cnt = QUESTION_BANK.filter(q=>q.topic===t).length;
+      const sel = PR.selTopics.includes(t);
+      const info = ST.byTopic[t];
+      const p = info ? pct(info.correct, info.incorrect) : null;
+      return `<button onclick="prToggleTopic('${t.replace(/'/g,"\\'")}') "
+        style="display:flex;justify-content:space-between;align-items:center;width:100%;background:${sel?'#00c9a718':'#0D1520'};border:1px solid ${sel?'#00C9A7':'#162035'};color:${sel?'#00C9A7':'#E2E8F4'};border-radius:8px;padding:10px 12px;font-size:12px;cursor:pointer;text-align:left;font-family:inherit;margin-bottom:5px">
+        <span>${t} <span style="color:#64748B;font-size:10px">(${cnt}問)</span></span>
+        ${p!==null?`<span style="font-size:11px;font-weight:700;color:${p>=75?'#00C9A7':'#F43F5E'}">${p}%</span>`:'<span style="font-size:10px;color:#64748B">未</span>'}
+      </button>`;
+    }).join('');
+    topicSection = `
+      <div style="margin-top:16px">
+        <div style="font-size:12px;font-weight:700;color:#64748B;margin-bottom:8px">難易度</div>
+        <div class="filter-scroll" style="margin-bottom:12px">${diffBtns}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:12px;font-weight:700;color:#64748B">トピックを選択</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn-sec" onclick="prSelectAllTopics()" style="padding:4px 8px;font-size:10px">全選択</button>
+            <button class="btn-sec" onclick="prClearTopics()" style="padding:4px 8px;font-size:10px">全解除</button>
+          </div>
+        </div>
+        ${topicBtns}
+      </div>`;
+  }
+
+  html(`
+    <button class="btn-sec" onclick="prShowModeMenu()" style="margin-bottom:14px">← 戻る</button>
+    <h2 style="margin-bottom:14px">📚 章・トピックを選ぶ</h2>
+    ${chBtns}
+    ${topicSection}
+    ${PR.selTopics.length||PR.selChapter ? `
+      <div style="margin-top:16px">
+        <div style="font-size:11px;color:#64748B;margin-bottom:8px">選択中: ${PR.selTopics.length?PR.selTopics.join('・'):'（全トピック）'}</div>
+        <button class="btn-primary" onclick="prStartSelect()">この条件で出題開始 →</button>
+      </div>` : ''}
+  `);
+}
+
+function prSelectChapter(ch) {
+  PR.selChapter = ch;
+  PR.selTopics = [...CHAPTERS[ch]]; // 章選択時は全トピック選択
+  prShowChapterSelect();
+}
+
+function prToggleTopic(t) {
+  PR.selTopics = PR.selTopics.includes(t)
+    ? PR.selTopics.filter(x=>x!==t)
+    : [...PR.selTopics, t];
+  prShowChapterSelect();
+}
+
+function prSelectAllTopics() {
+  PR.selTopics = [...(CHAPTERS[PR.selChapter]||[])];
+  prShowChapterSelect();
+}
+
+function prClearTopics() {
+  PR.selTopics = [];
+  prShowChapterSelect();
+}
+
+function prSetDiff(d) { PR.selDiff = d; prShowChapterSelect(); }
+
+function prStartSelect() {
+  PR.mode = 'select';
+  PR._lastState = '';
+  PR.pool = buildPool(); PR.idx = 0; PR.sel = []; PR.done = false;
+  renderPractice();
+}
+
+function setRandMode(m) {
+  PR.mode = 'random'; PR.randMode = m;
+  PR._lastState = '';
+  PR.pool = buildPool(); PR.idx = 0; PR.sel = []; PR.done = false;
+  renderPractice();
+}
+
+function setRevMode(m) {
+  PR.mode = 'review'; PR.revMode = m;
+  PR._lastState = '';
+  PR.pool = buildPool(); PR.idx = 0; PR.sel = []; PR.done = false;
+  renderPractice();
+}
 
 function prOpt(i) {
   if (PR.done) return;
   const q = PR.pool[PR.idx];
-  if (q.multi) {
-    PR.sel = PR.sel.includes(i) ? PR.sel.filter(x=>x!==i) : [...PR.sel, i];
-  } else {
-    PR.sel = [i];
-  }
+  if (q.multi) { PR.sel = PR.sel.includes(i) ? PR.sel.filter(x=>x!==i) : [...PR.sel, i]; }
+  else { PR.sel = [i]; }
   renderPractice();
 }
 
@@ -1547,14 +1776,12 @@ function renderExamSetup() {
   const counts = [10,20,30,QUESTION_BANK.length];
   const cBtns = counts.map(n => `<button class="btn-sec ${EX.count===n?'active':''}" onclick="setEC(${n})">${n===QUESTION_BANK.length?'全問':n+'問'}</button>`).join('');
   const dBtns = ['全て',...DIFFS].map(d => `<button class="btn-sec ${EX.diff===d?'active':''}" onclick="setED('${d}')">${d}</button>`).join('');
-
   const hist = (ST.examHistory||[]).slice(0,5).map(h =>
     `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #162035">
       <span style="font-size:11px;color:#64748B">${h.date}</span>
       <span style="font-size:13px;font-weight:700;color:${h.pct>=75?'#00C9A7':'#F43F5E'}">${h.score}/${h.total} (${h.pct}%)</span>
     </div>`
   ).join('');
-
   html(`
     <h2 style="margin-bottom:16px">📋 模擬試験</h2>
     <div class="card" style="text-align:center;padding:24px">
@@ -1599,36 +1826,30 @@ function renderExamQ() {
   const mm = String(Math.floor(EX.timeLeft/60)).padStart(2,'0');
   const ss = String(EX.timeLeft%60).padStart(2,'0');
   const urgent = EX.timeLeft < 60;
-
-  let optsHtml = q.options.map((opt, i) => {
+  const optsHtml = q.options.map((opt, i) => {
     let cls = 'opt';
     if (!submitted) { if (curSel.includes(i)) cls = 'opt selected'; }
     else { if (cs.includes(i)) cls = 'opt correct'; else if (curSel.includes(i)) cls = 'opt wrong'; }
     return `<button class="${cls}" onclick="exOpt(${i})">${opt}</button>`;
   }).join('');
-
   const ok = submitted && isCorrect(q, isMulti ? EX.selM : EX.selS);
   let bottomHtml = '';
   if (!submitted) {
     const canSubmit = isMulti ? EX.selM.length > 0 : EX.selS >= 0;
     bottomHtml = `<button class="btn-primary" style="opacity:${canSubmit?1:.5}" onclick="exSubmit()" ${canSubmit?'':' disabled'}>回答する</button>`;
   } else {
-    bottomHtml = `
-      <div class="card ${ok?'accent':'danger'}" style="margin-bottom:10px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <span>${ok?'✅':'❌'}</span>
-          <span style="font-weight:700;color:${ok?'#00C9A7':'#F43F5E'}">${ok?'正解':'不正解'}</span>
-          ${!ok?`<span style="font-size:11px;color:#64748B">正解: ${cs.map(c=>String.fromCharCode(65+c)).join('・')}</span>`:''}
-        </div>
-        <p style="font-size:12px;line-height:1.8">${q.explanation}</p>
-      </div>`;
-    if (EX.cur < EX.questions.length - 1) {
-      bottomHtml += `<button class="btn-primary" onclick="exNext()">次の問題 →</button>`;
-    } else {
-      bottomHtml += `<button class="btn-primary" style="background:linear-gradient(135deg,#F59E0B,#d4890a)" onclick="finishExam()">結果を見る 🏆</button>`;
-    }
+    bottomHtml = `<div class="card ${ok?'accent':'danger'}" style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span>${ok?'✅':'❌'}</span>
+        <span style="font-weight:700;color:${ok?'#00C9A7':'#F43F5E'}">${ok?'正解':'不正解'}</span>
+        ${!ok?`<span style="font-size:11px;color:#64748B">正解: ${cs.map(c=>String.fromCharCode(65+c)).join('・')}</span>`:''}
+      </div>
+      <p style="font-size:12px;line-height:1.8">${q.explanation}</p>
+    </div>`;
+    bottomHtml += EX.cur < EX.questions.length-1
+      ? `<button class="btn-primary" onclick="exNext()">次の問題 →</button>`
+      : `<button class="btn-primary" style="background:linear-gradient(135deg,#F59E0B,#d4890a)" onclick="finishExam()">結果を見る 🏆</button>`;
   }
-
   content().innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <h2 style="font-size:15px">問題 ${EX.cur+1}/${EX.questions.length}</h2>
@@ -1662,10 +1883,7 @@ function exSubmit() {
   renderExamQ();
 }
 
-function exNext() {
-  EX.cur++; EX.selS = -1; EX.selM = [];
-  renderExamQ();
-}
+function exNext() { EX.cur++; EX.selS = -1; EX.selM = []; renderExamQ(); }
 
 function finishExam() {
   if (examTimer) { clearInterval(examTimer); examTimer = null; }
@@ -1674,13 +1892,10 @@ function finishExam() {
   const total = EX.questions.length;
   const p = Math.round(score/total*100);
   recordExam(score, total);
-  // record individual answers
   EX.questions.forEach((q,i) => {
     const ans = EX.answers[i] ?? (q.multi?[]:-1);
-    const ok = isCorrect(q, ans);
-    recordAnswer(q.id, q.topic, ok);
+    recordAnswer(q.id, q.topic, isCorrect(q, ans));
   });
-
   const rows = EX.questions.map((q,i) => {
     const ans = EX.answers[i] ?? (q.multi?[]:-1);
     const ok = isCorrect(q, ans);
@@ -1694,7 +1909,6 @@ function finishExam() {
       ${!ok?`<p style="font-size:11px;color:#64748B;line-height:1.6">正解: ${cs.map(c=>String.fromCharCode(65+c)).join('・')}<br>${q.explanation.slice(0,100)}…</p>`:''}
     </div>`;
   }).join('');
-
   content().innerHTML = `
     <h2 style="margin-bottom:14px">📋 結果</h2>
     <div class="card" style="text-align:center;padding:24px;margin-bottom:14px">
@@ -1709,61 +1923,87 @@ function finishExam() {
 }
 
 // ═══════════════════════════════════════
-// TOPICS
+// TOPICS (大項目4章 → 小トピック)
 // ═══════════════════════════════════════
-let topicSel = null, topicPool = [], topicIdx = 0, topicSel2 = [], topicDone = false;
+let TPC = { chapter:null, topic:null, pool:[], idx:0, sel:[], done:false };
 
-function renderTopics() {
-  if (topicSel) { renderTopicQ(); return; }
-  const byTopic = {};
-  QUESTION_BANK.forEach(q => { if (!byTopic[q.topic]) byTopic[q.topic]=[]; byTopic[q.topic].push(q); });
-  const rows = Object.entries(byTopic).map(([t, qs]) => {
+function renderTopicsHome() {
+  TPC.chapter = null; TPC.topic = null;
+  const chCards = Object.entries(CHAPTERS).map(([ch, topics]) => {
+    const total = QUESTION_BANK.filter(q => topics.includes(q.topic)).length;
+    const answered = QUESTION_BANK.filter(q => topics.includes(q.topic) && ST.answered[q.id]).length;
+    const info = topics.reduce((acc,t)=>{
+      const d=ST.byTopic[t]; if(d){acc.c+=d.correct;acc.i+=d.incorrect;} return acc;
+    },{c:0,i:0});
+    const p = pct(info.c, info.i);
+    const pColor = info.c+info.i===0?'#64748B':p>=75?'#00C9A7':'#F43F5E';
+    return `<div class="card" style="cursor:pointer;margin-bottom:8px" onclick="renderChapterTopics('${ch.replace(/'/g,"\\'")}')">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:700;font-size:14px">${ch}</div>
+          <div style="font-size:10px;color:#64748B;margin-top:3px">${topics.length}トピック・${total}問 | ${answered}問回答済み</div>
+          ${info.c+info.i>0?`<div class="pbar" style="margin-top:6px;width:120px"><div class="pbar-fill" style="width:${p}%;background:${pColor}"></div></div>`:''}
+        </div>
+        <span style="font-size:${info.c+info.i>0?'18':'13'}px;font-weight:800;color:${pColor}">${info.c+info.i>0?p+'%':'→'}</span>
+      </div>
+    </div>`;
+  }).join('');
+  html(`
+    <div class="sec-title">📚 トピック別練習</div>
+    <div class="sec-sub">スタディガイドの4章構成で学習</div>
+    ${chCards}
+  `);
+}
+
+function renderChapterTopics(ch) {
+  TPC.chapter = ch;
+  const topics = CHAPTERS[ch] || [];
+  const rows = topics.map(t => {
+    const qs = QUESTION_BANK.filter(q => q.topic === t);
+    if (!qs.length) return '';
+    const answered = qs.filter(q => ST.answered[q.id]).length;
     const info = ST.byTopic[t];
     const p = info ? pct(info.correct, info.incorrect) : null;
-    const answered = qs.filter(q => ST.answered[q.id]).length;
-    return `<button onclick="selectTopic('${t.replace(/'/g,"\\'")}','${Object.keys(byTopic).indexOf(t)}')"
-      style="display:flex;justify-content:space-between;align-items:center;width:100%;background:#0D1520;border:1px solid #162035;color:#E2E8F4;border-radius:10px;padding:12px 14px;font-size:13px;cursor:pointer;text-align:left;font-family:inherit;margin-bottom:6px">
+    return `<button onclick="startTopicPractice('${t.replace(/'/g,"\\'")}') "
+      style="display:flex;justify-content:space-between;align-items:center;width:100%;background:#0D1520;border:1px solid #162035;color:#E2E8F4;border-radius:10px;padding:11px 13px;font-size:13px;cursor:pointer;text-align:left;font-family:inherit;margin-bottom:5px">
       <div>
         <div style="font-weight:600">${t}</div>
         <div style="font-size:10px;color:#64748B;margin-top:2px">${qs.length}問・${answered}問回答済み</div>
       </div>
-      ${p !== null ? `<span style="font-size:14px;font-weight:800;color:${p>=75?'#00C9A7':'#F43F5E'}">${p}%</span>` : '<span style="font-size:11px;color:#64748B">未回答</span>'}
+      ${p!==null?`<span style="font-size:13px;font-weight:800;color:${p>=75?'#00C9A7':'#F43F5E'}">${p}%</span>`:'<span style="font-size:10px;color:#64748B">未回答</span>'}
     </button>`;
   }).join('');
-
-  content().innerHTML = `
-    <div class="sec-title">📚 トピック別練習</div>
-    <div class="sec-sub">苦手なトピックを集中特訓。正解率低い順に出題。</div>
-    <div>${rows}</div>
-  `;
+  html(`
+    <button class="btn-sec" onclick="renderTopicsHome()" style="margin-bottom:12px">← 章一覧に戻る</button>
+    <h2 style="margin-bottom:4px;font-size:16px">${ch}</h2>
+    <div style="font-size:11px;color:#64748B;margin-bottom:14px">トピックを選んで練習</div>
+    ${rows}
+  `);
 }
 
-function selectTopic(t) {
-  topicSel = t;
+function startTopicPractice(t) {
+  TPC.topic = t;
   const qs = QUESTION_BANK.filter(q => q.topic === t);
-  // weak-first
-  const weak = qs.filter(q => ST.answered[q.id] && pct(ST.answered[q.id].correct, ST.answered[q.id].incorrect) < 60)
-    .sort((a,b) => pct(ST.answered[a.id].correct,ST.answered[a.id].incorrect) - pct(ST.answered[b.id].correct,ST.answered[b.id].incorrect));
+  const weak  = qs.filter(q => ST.answered[q.id] && pct(ST.answered[q.id].correct, ST.answered[q.id].incorrect) < 60)
+                  .sort((a,b) => pct(ST.answered[a.id].correct,ST.answered[a.id].incorrect) - pct(ST.answered[b.id].correct,ST.answered[b.id].incorrect));
   const fresh = qs.filter(q => !ST.answered[q.id]);
-  const ok2 = qs.filter(q => ST.answered[q.id] && pct(ST.answered[q.id].correct,ST.answered[q.id].incorrect) >= 60);
-  topicPool = [...shuffle(fresh), ...weak, ...shuffle(ok2)];
-  topicIdx = 0; topicSel2 = []; topicDone = false;
+  const ok2   = qs.filter(q => ST.answered[q.id] && pct(ST.answered[q.id].correct,ST.answered[q.id].incorrect) >= 60);
+  TPC.pool = [...shuffle(fresh), ...weak, ...shuffle(ok2)];
+  TPC.idx = 0; TPC.sel = []; TPC.done = false;
   renderTopicQ();
 }
 
 function renderTopicQ() {
-  if (!topicPool.length) { topicSel = null; renderTopics(); return; }
-  const q = topicPool[topicIdx];
+  if (!TPC.pool.length) { renderChapterTopics(TPC.chapter); return; }
+  const q = TPC.pool[TPC.idx];
   const isMulti = !!q.multi;
   const cs = Array.isArray(q.answer) ? q.answer : [q.answer];
-  const ok = topicDone && isCorrect(q, isMulti ? topicSel2 : topicSel2[0] ?? -1);
-
-  let optsHtml = q.options.map((opt, i) => {
-    const cls = optClass(i, topicDone, q.answer, topicSel2);
-    return `<button class="${cls}" onclick="topicOpt(${i})">${opt}</button>`;
+  const ok = TPC.done && isCorrect(q, isMulti ? TPC.sel : TPC.sel[0] ?? -1);
+  const optsHtml = q.options.map((opt, i) => {
+    const cls = optClass(i, TPC.done, q.answer, TPC.sel);
+    return `<button class="${cls}" onclick="tpcOpt(${i})">${opt}</button>`;
   }).join('');
-
-  let bottom = topicDone ? `
+  const bottom = TPC.done ? `
     <div class="card ${ok?'accent':'danger'}" style="margin-top:10px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
         <span>${ok?'✅':'❌'}</span>
@@ -1772,13 +2012,12 @@ function renderTopicQ() {
       </div>
       <p style="font-size:13px;line-height:1.8">${q.explanation}</p>
     </div>
-    <button class="btn-primary" style="margin-top:12px" onclick="topicNext()">次の問題へ →</button>
-  ` : `<button class="btn-primary" style="margin-top:12px;opacity:${topicSel2.length?1:.5}" onclick="topicSubmit()" ${topicSel2.length?'':' disabled'}>回答する</button>`;
-
+    <button class="btn-primary" style="margin-top:12px" onclick="tpcNext()">次の問題へ →</button>
+  ` : `<button class="btn-primary" style="margin-top:12px;opacity:${TPC.sel.length?1:.5}" onclick="tpcSubmit()" ${TPC.sel.length?'':' disabled'}>回答する</button>`;
   content().innerHTML = `
-    <button class="btn-sec" onclick="topicSel=null;renderTopics()" style="margin-bottom:12px">← 一覧に戻る</button>
-    <div style="font-size:15px;font-weight:800;margin-bottom:4px">${topicSel}</div>
-    <div style="font-size:11px;color:#64748B;margin-bottom:12px">${topicIdx+1}/${topicPool.length}問</div>
+    <button class="btn-sec" onclick="renderChapterTopics('${TPC.chapter.replace(/'/g,"\\'")}') " style="margin-bottom:12px">← トピック一覧に戻る</button>
+    <div style="font-size:14px;font-weight:800;margin-bottom:4px">${TPC.topic}</div>
+    <div style="font-size:11px;color:#64748B;margin-bottom:12px">${TPC.idx+1}/${TPC.pool.length}問</div>
     <div class="card">
       <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">
         ${tag(q.topic,'tag-blue')} ${diffTag(q.difficulty)} ${isMulti?tag('複数選択','tag-pur'):''}
@@ -1790,27 +2029,26 @@ function renderTopicQ() {
   `;
 }
 
-function topicOpt(i) {
-  if (topicDone) return;
-  const q = topicPool[topicIdx];
-  if (q.multi) { topicSel2 = topicSel2.includes(i) ? topicSel2.filter(x=>x!==i) : [...topicSel2,i]; }
-  else { topicSel2 = [i]; }
+function tpcOpt(i) {
+  if (TPC.done) return;
+  const q = TPC.pool[TPC.idx];
+  if (q.multi) { TPC.sel = TPC.sel.includes(i) ? TPC.sel.filter(x=>x!==i) : [...TPC.sel,i]; }
+  else { TPC.sel = [i]; }
   renderTopicQ();
 }
 
-function topicSubmit() {
-  if (!topicSel2.length) return;
-  topicDone = true;
-  const q = topicPool[topicIdx];
-  const ans = q.multi ? topicSel2 : topicSel2[0];
-  const ok = isCorrect(q, ans);
-  recordAnswer(q.id, q.topic, ok);
+function tpcSubmit() {
+  if (!TPC.sel.length) return;
+  TPC.done = true;
+  const q = TPC.pool[TPC.idx];
+  const ans = q.multi ? TPC.sel : TPC.sel[0];
+  recordAnswer(q.id, q.topic, isCorrect(q, ans));
   renderTopicQ();
 }
 
-function topicNext() {
-  topicIdx = (topicIdx + 1) % topicPool.length;
-  topicSel2 = []; topicDone = false;
+function tpcNext() {
+  TPC.idx = (TPC.idx+1) % TPC.pool.length;
+  TPC.sel = []; TPC.done = false;
   renderTopicQ();
 }
 
@@ -1824,18 +2062,21 @@ function renderStats() {
   const masteredQ = Object.entries(ST.answered).filter(([,v]) => pct(v.correct,v.incorrect) >= 80 && v.count >= 2).length;
   const weakQ = Object.entries(ST.answered).filter(([,v]) => pct(v.correct,v.incorrect) < 60).length;
 
-  const topicRows = Object.entries(ST.byTopic)
-    .map(([t,d]) => ({t, p: pct(d.correct,d.incorrect), tot: d.correct+d.incorrect}))
-    .sort((a,b) => a.p - b.p)
-    .map(({t,p:tp,tot:tt}) => `
-      <div style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-          <span style="font-size:11px;color:#64748B">${t}（${tt}問）</span>
-          <span style="font-size:11px;font-weight:700;color:${tp>=75?'#00C9A7':'#F43F5E'}">${tp}%</span>
-        </div>
-        <div class="pbar"><div class="pbar-fill" style="width:${tp}%;background:${tp>=75?'#00C9A7':'#F43F5E'}"></div></div>
+  // 章別成績
+  const chRows = Object.entries(CHAPTERS).map(([ch, topics]) => {
+    const info = topics.reduce((acc,t)=>{ const d=ST.byTopic[t]; if(d){acc.c+=d.correct;acc.i+=d.incorrect;} return acc; },{c:0,i:0});
+    const cp = pct(info.c, info.i);
+    const total = QUESTION_BANK.filter(q => topics.includes(q.topic)).length;
+    const answered = QUESTION_BANK.filter(q => topics.includes(q.topic) && ST.answered[q.id]).length;
+    if (info.c+info.i===0) return '';
+    return `<div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+        <span style="font-size:11px;color:#64748B">${ch.replace('CH1: ','').replace('CH2: ','').replace('CH3: ','').replace('CH4: ','')}</span>
+        <span style="font-size:11px;font-weight:700;color:${cp>=75?'#00C9A7':'#F43F5E'}">${cp}% (${answered}/${total}問)</span>
       </div>
-    `).join('');
+      <div class="pbar"><div class="pbar-fill" style="width:${cp}%;background:${cp>=75?'#00C9A7':'#F43F5E'}"></div></div>
+    </div>`;
+  }).join('');
 
   const hist = (ST.examHistory||[]).map(h =>
     `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #162035">
@@ -1851,7 +2092,7 @@ function renderStats() {
       <div class="stat-box"><div class="stat-val" style="color:#F43F5E">${ST.incorrect}</div><div class="stat-lbl">不正解数</div></div>
       <div class="stat-box"><div class="stat-val" style="color:#F59E0B">${p}%</div><div class="stat-lbl">正解率</div></div>
     </div>
-    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="stats-grid">
       <div class="stat-box"><div class="stat-val" style="color:#3B82F6;font-size:22px">${totalAnswered}</div><div class="stat-lbl">問回答済み</div></div>
       <div class="stat-box"><div class="stat-val" style="color:#00C9A7;font-size:22px">${masteredQ}</div><div class="stat-lbl">問マスター</div></div>
       <div class="stat-box"><div class="stat-val" style="color:#F43F5E;font-size:22px">${weakQ}</div><div class="stat-lbl">問苦手</div></div>
@@ -1859,13 +2100,13 @@ function renderStats() {
     <div class="card" style="margin-bottom:12px">
       <div style="font-weight:700;font-size:13px;margin-bottom:8px">全体の正解率（目標75%）</div>
       <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-        <span style="font-size:11px;color:#64748B">${tot}問回答・全164問</span>
+        <span style="font-size:11px;color:#64748B">${tot}問回答・全${QUESTION_BANK.length}問</span>
         <span style="font-weight:700;color:#00C9A7">${p}%</span>
       </div>
       <div class="pbar"><div class="pbar-fill" style="width:${p}%;background:linear-gradient(90deg,#00C9A7,#3B82F6)"></div></div>
       <div style="font-size:10px;color:#64748B;margin-top:6px">🔥 連続学習: ${ST.streak||0}日</div>
     </div>
-    ${topicRows ? `<div class="card" style="margin-bottom:12px"><div style="font-weight:700;font-size:13px;margin-bottom:12px">トピック別成績（正解率の低い順）</div>${topicRows}</div>` : ''}
+    ${chRows ? `<div class="card" style="margin-bottom:12px"><div style="font-weight:700;font-size:13px;margin-bottom:12px">章別成績</div>${chRows}</div>` : ''}
     ${hist ? `<div class="card" style="margin-bottom:12px"><div style="font-weight:700;font-size:13px;margin-bottom:8px">📅 模擬試験の履歴</div>${hist}</div>` : ''}
     <button class="btn-sec" style="width:100%;margin-top:4px" onclick="resetConfirm()">⚠ データをリセット</button>
   `;
@@ -1874,10 +2115,7 @@ function renderStats() {
 function resetConfirm() {
   if (confirm('全ての学習データをリセットしますか？\n（問題データは消えません）')) {
     ST = { correct:0, incorrect:0, byTopic:{}, answered:{}, examHistory:[], streak:0, lastDate:null };
-    saveStore(ST);
-    updateHeader();
-    toast('データをリセットしました');
-    renderStats();
+    saveStore(ST); updateHeader(); toast('データをリセットしました'); renderStats();
   }
 }
 
@@ -1885,7 +2123,7 @@ function resetConfirm() {
 // INIT
 // ═══════════════════════════════════════
 updateHeader();
-renderPractice();
+prShowModeMenu();
 </script>
 </body>
 </html>
