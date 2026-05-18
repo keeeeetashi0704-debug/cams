@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -1448,7 +1447,7 @@ function renderPractice() {
   const q = PR.pool[PR.idx];
   const isMulti = !!q.multi;
   const cs = Array.isArray(q.answer) ? q.answer : [q.answer];
-  const ok = PR.done && isCorrect(q, PR.sel);
+  const ok = PR.done && isCorrect(q, q.multi ? PR.sel : PR.sel[0]);
   const qInfo = ST.answered[q.id];
   const qPct = qInfo ? pct(qInfo.correct, qInfo.incorrect) : null;
 
@@ -1888,6 +1887,5 @@ function resetConfirm() {
 updateHeader();
 renderPractice();
 </script>
-
 </body>
 </html>
