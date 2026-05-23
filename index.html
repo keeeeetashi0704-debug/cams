@@ -694,7 +694,7 @@ function prOpt(i) {
 function prSubmit() {
   if (!PR.sel.length) return;
   PR.done = true;
-  const q = PR.pool[PR.idx];
+  const q = PR.shuffledQ || PR.pool[PR.idx];
   const ok = isCorrect(q, q.multi ? PR.sel : PR.sel[0]);
   recordAnswer(q.id, q.topic, ok);
   renderPractice();
@@ -984,7 +984,7 @@ function tpcOpt(i) {
 function tpcSubmit() {
   if (!TPC.sel.length) return;
   TPC.done = true;
-  const q = TPC.pool[TPC.idx];
+  const q = TPC.shuffledQ || TPC.pool[TPC.idx];
   const ans = q.multi ? TPC.sel : TPC.sel[0];
   recordAnswer(q.id, q.topic, isCorrect(q, ans));
   renderTopicQ();
