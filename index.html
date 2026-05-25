@@ -492,7 +492,7 @@ function renderPractice() {
     <div style="background:#0D1520;border:1px solid #162035;border-radius:10px;padding:8px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
       <span style="font-size:11px;color:#64748B">${modeLabel} | ${PR.idx+1}/${PR.pool.length}問</span>
       <div style="display:flex;gap:6px;align-items:center">
-        <span style="font-size:11px;color:#64748B">${qInfo?`正解率${qPct}%`:'初回'}</span>
+        <span style="font-size:11px;color:#64748B">${qInfo?`正解率${qPct}% (${qInfo.count}回)`:'初回'}</span>
         <button class="btn-sec" onclick="prNext()" style="padding:3px 8px;font-size:10px">スキップ</button>
       </div>
     </div>
