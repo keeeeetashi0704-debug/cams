@@ -96,8 +96,8 @@
 </div>
 <div id="toast"></div>
 
-<script src="questions.js?v=2"></script>
-<script src="pool_overrides.js?v=1"></script>
+<script src="questions.js?v=3"></script>
+<script src="pool_overrides.js?v=2"></script>
 <script>
 'use strict';
 
@@ -223,12 +223,21 @@ function updateHeader() {
 function shuffle(arr) { return [...arr].sort(() => Math.random() - .5); }
 
 function isCorrect(q, ans) {
+  // 複数選択問題
   if (q.multi) {
     const cs = Array.isArray(q.answer) ? q.answer : [q.answer];
     if (!Array.isArray(ans)) return false;
-    return ans.length === cs.length && ans.every(x => cs.includes(x));
+    if (ans.length === 0) return false;
+    // 同じ要素数で、両方向に含む（完全一致）
+    if (ans.length !== cs.length) return false;
+    // 数値型に正規化
+    const csNum = cs.map(x => Number(x));
+    const ansNum = ans.map(x => Number(x));
+    return ansNum.every(x => csNum.includes(x)) && csNum.every(x => ansNum.includes(x));
   }
-  return ans === q.answer;
+  // 単一選択問題
+  if (ans === null || ans === undefined) return false;
+  return Number(ans) === Number(q.answer);
 }
 
 
@@ -256,37 +265,31 @@ function withShuffle(q) {
   
   // 方式1: correctPool/wrongPool が存在する場合（最優先）
   if (q.correctPool && q.wrongPool && q.correctPool.length > 0 && q.wrongPool.length >= 3) {
-    // 正解候補から1つランダムに選ぶ（複数選択問題なら必要数選ぶ）
     const numCorrect = q.multi ? Math.min(q.correctPool.length, 3) : 1;
     const shuffledCorrect = [...q.correctPool].sort(() => Math.random() - 0.5);
     const selectedCorrect = shuffledCorrect.slice(0, numCorrect);
-    // 不正解候補から3つランダムに選ぶ（複数選択問題なら 4-numCorrect 個）
     const numWrong = q.multi ? Math.max(1, 4 - numCorrect) : 3;
     const shuffledWrong = [...q.wrongPool].sort(() => Math.random() - 0.5);
     const selectedWrong = shuffledWrong.slice(0, numWrong);
-    // 全選択肢を作る
     const allOptions = [...selectedCorrect, ...selectedWrong];
-    // 正解インデックスを記録
     const correctIndices = selectedCorrect.map((_,i) => i);
     baseOptions = allOptions;
     baseAnswer = q.multi ? correctIndices : correctIndices[0];
   }
-  // 方式2: optionSets が存在する場合
   else if (q.optionSets && Array.isArray(q.optionSets) && q.optionSets.length > 0) {
     const setIdx = Math.floor(Math.random() * (q.optionSets.length + 1));
     if (setIdx === 0) {
-      baseOptions = q.options;
-      baseAnswer = q.answer;
+      baseOptions = [...q.options];
+      baseAnswer = Array.isArray(q.answer) ? [...q.answer] : q.answer;
     } else {
       const set = q.optionSets[setIdx - 1];
-      baseOptions = set.options;
-      baseAnswer = set.answer;
+      baseOptions = [...set.options];
+      baseAnswer = Array.isArray(set.answer) ? [...set.answer] : set.answer;
     }
   }
-  // 方式3: 通常の選択肢
   else {
-    baseOptions = q.options;
-    baseAnswer = q.answer;
+    baseOptions = [...q.options];
+    baseAnswer = Array.isArray(q.answer) ? [...q.answer] : q.answer;
   }
 
   // 並びをシャッフル
@@ -296,19 +299,23 @@ function withShuffle(q) {
     const j = Math.floor(Math.random() * (i+1));
     [indices[i], indices[j]] = [indices[j], indices[i]];
   }
+  // 新しい選択肢を作成（A. B. C. のラベルを振り直す）
   const newOptions = indices.map((origIdx, newIdx) => {
     const text = baseOptions[origIdx].replace(/^[A-Z]\.\s*/, '');
     return String.fromCharCode(65 + newIdx) + '. ' + text;
   });
-  const oldAns = Array.isArray(baseAnswer) ? baseAnswer : [baseAnswer];
-  const newAns = oldAns.map(a => indices.indexOf(a));
-  return {
-    ...q,
-    options: newOptions,
-    answer: q.multi ? newAns : newAns[0],
-    _origAnswer: q.answer,
-    _shuffleMap: indices
-  };
+  // 答えを新しいインデックスにマッピング
+  const oldAnsArr = Array.isArray(baseAnswer) ? baseAnswer : [baseAnswer];
+  const newAnsArr = oldAnsArr.map(a => indices.indexOf(a));
+  const finalAnswer = q.multi ? newAnsArr : newAnsArr[0];
+  
+  // 新しいオブジェクトを作成（spread後にanswerを明示的に上書き）
+  const result = Object.assign({}, q);
+  result.options = newOptions;
+  result.answer = finalAnswer;
+  result._origAnswer = q.answer;
+  result._shuffleMap = indices;
+  return result;
 }
 
 function pct(a, b) { return a+b === 0 ? 0 : Math.round(a/(a+b)*100); }
@@ -450,6 +457,7 @@ function renderPractice() {
     </div>`);
     return;
   }
+  // シャッフル管理：1問につき1回だけシャッフル、回答中・回答後は絶対に再シャッフルしない
   if (!PR.shuffledQ || PR.shuffledQ._origIdx !== PR.idx) {
     PR.shuffledQ = withShuffle(PR.pool[PR.idx]);
     PR.shuffledQ._origIdx = PR.idx;
@@ -685,7 +693,7 @@ function setRevMode(m) {
 
 function prOpt(i) {
   if (PR.done) return;
-  const q = PR.pool[PR.idx];
+  const q = PR.shuffledQ || PR.pool[PR.idx];
   if (q.multi) { PR.sel = PR.sel.includes(i) ? PR.sel.filter(x=>x!==i) : [...PR.sel, i]; }
   else { PR.sel = [i]; }
   renderPractice();
@@ -975,7 +983,7 @@ function renderTopicQ() {
 
 function tpcOpt(i) {
   if (TPC.done) return;
-  const q = TPC.pool[TPC.idx];
+  const q = TPC.shuffledQ || TPC.pool[TPC.idx];
   if (q.multi) { TPC.sel = TPC.sel.includes(i) ? TPC.sel.filter(x=>x!==i) : [...TPC.sel,i]; }
   else { TPC.sel = [i]; }
   renderTopicQ();
