@@ -78,7 +78,7 @@
   <div id="hdr"><div id="hdr-inner">
     <div style="display:flex;align-items:center;gap:8px">
       <div class="logo-icon">C</div>
-      <div><div class="logo-text">CAMS StudyApp</div><div class="logo-sub">スタディガイド v6.52 · 164問</div></div>
+      <div><div class="logo-text">CAMS StudyApp</div><div class="logo-sub" id="hdr-qcount">スタディガイド v6.52</div></div>
     </div>
     <div class="stat-pills">
       <div class="pill"><span style="color:#00C9A7">✓</span><span id="hdr-correct">0</span></div>
@@ -96,8 +96,8 @@
 </div>
 <div id="toast"></div>
 
-<script src="questions.js?v=3"></script>
-<script src="pool_overrides.js?v=2"></script>
+<script src="questions.js?v=4"></script>
+<script src="pool_overrides.js?v=3"></script>
 <script>
 'use strict';
 
@@ -215,6 +215,11 @@ function updateHeader() {
   document.getElementById('hdr-correct').textContent = ST.correct;
   document.getElementById('hdr-wrong').textContent = ST.incorrect;
   document.getElementById('hdr-pct').textContent = p + '%';
+  // 問題数を動的に表示
+  const qcEl = document.getElementById('hdr-qcount');
+  if (qcEl && typeof QUESTION_BANK !== 'undefined') {
+    qcEl.textContent = 'スタディガイド v6.52 · ' + QUESTION_BANK.length + '問';
+  }
 }
 
 // ═══════════════════════════════════════
@@ -261,14 +266,23 @@ let SHUFFLE_MAP = loadShuffles();
 //   2. optionSets 方式: 複数の選択肢セットからランダムに1セット選択+シャッフル
 //   3. 通常方式: options をそのままシャッフル
 function withShuffle(q) {
+  // noShuffle:true の問題は選択肢を固定したまま返す（PDF直輸入問題用）
+  if (q.noShuffle) {
+    return Object.assign({}, q, {
+      _origAnswer: q.answer,
+      _shuffleMap: q.options.map((_, i) => i)
+    });
+  }
   let baseOptions, baseAnswer;
   
   // 方式1: correctPool/wrongPool が存在する場合（最優先）
-  if (q.correctPool && q.wrongPool && q.correctPool.length > 0 && q.wrongPool.length >= 3) {
+  if (q.correctPool && q.wrongPool && q.correctPool.length > 0 && q.wrongPool.length >= 2) {
+    // 複数選択: 正解候補から3つ・不正解候補から2つ選んで5択にする（本番試験は5択3選が多い）
+    // 単一選択: 正解候補から1つ・不正解候補から3つ選んで4択にする
     const numCorrect = q.multi ? Math.min(q.correctPool.length, 3) : 1;
+    const numWrong = q.multi ? Math.min(q.wrongPool.length, 2) : Math.min(q.wrongPool.length, 3);
     const shuffledCorrect = [...q.correctPool].sort(() => Math.random() - 0.5);
     const selectedCorrect = shuffledCorrect.slice(0, numCorrect);
-    const numWrong = q.multi ? Math.max(1, 4 - numCorrect) : 3;
     const shuffledWrong = [...q.wrongPool].sort(() => Math.random() - 0.5);
     const selectedWrong = shuffledWrong.slice(0, numWrong);
     const allOptions = [...selectedCorrect, ...selectedWrong];
